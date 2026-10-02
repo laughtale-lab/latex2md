@@ -258,6 +258,19 @@ class Reader:
                 opt = self.optional()
                 result.append(Node('macro', name, self.loc(start), args=[self.argument()], option=opt))
                 continue
+            # TeX \"o and \"{o} are accents, not a free-standing escaped quote.
+            # Consume exactly one following letter or one balanced braced group.
+            if name == '"':
+                self.ws()
+                if self.i < self.n and self.text[self.i] == '{':
+                    acc = self.argument()
+                elif self.i < self.n and self.text[self.i].isalpha():
+                    acc = [Node('text', self.text[self.i], self.loc(self.i))]
+                    self.i += 1
+                else:
+                    raise self.error('expected letter after TeX accent \"')
+                result.append(Node('macro', name, self.loc(start), args=[acc]))
+                continue
             base = name[:-1] if name.endswith('*') else name
             opt = self.optional() if base in {'chapter', 'section', 'subsection', 'subsubsection'} else None
             args = [self.argument() for _ in range(ARGS.get(base, 0))]

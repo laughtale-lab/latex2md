@@ -8,7 +8,7 @@ mdBook-compatible Markdown from the Manual's existing LaTeX without modifying
 any LaTeX macros, chapter sources, artwork, example files, or print layout.
 The Manual's LaTeX repository remains its **only editable document source**.
 
-> **Release status:** `0.1.0` candidate. Verified locally against the supplied
+> **Release status:** `0.1.2` candidate. Verified locally against the supplied
 > Diabat 2.0 LaTeX snapshot. Review the independent repository's GitHub Actions
 > smoke test against its *current* public Manual before tagging a stable release.
 > This repository alone does **not** publish the official Manual website.

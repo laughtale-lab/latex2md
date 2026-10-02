@@ -38,6 +38,12 @@ class StructuralParserTests(unittest.TestCase):
         self.assertEqual(len(result),1)
         self.assertEqual(result[0].value,'fancyhead')
 
+    def test_diaeresis_consumes_single_token(self):
+        nodes = self.parse(r'L\"owdin and L\"{o}wdin')
+        self.assertEqual([n.kind for n in nodes], ['text', 'macro', 'text', 'macro', 'text'])
+        self.assertEqual(plain(nodes[1].args[0]), 'o')
+        self.assertEqual(plain(nodes[3].args[0]), 'o')
+
     def test_optional_short_chapter_title(self):
         result=self.parse(r'\chapter[Short]{Long\texttt{title}}')
         self.assertEqual(result[0].option,'Short')

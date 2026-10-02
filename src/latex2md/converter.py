@@ -15,6 +15,7 @@ import shutil
 import tempfile
 from urllib.parse import quote, urlsplit
 
+from . import __version__
 from .bib import Entry, load_bibs
 from .parser import Node, ParseError, Reader, plain
 
@@ -60,7 +61,7 @@ SKIP = {
 }
 ESCAPES = {'_': '_', '%': '%', '#': '#', '&': '&', '$': '$',
            '{': '{', '}': '}', '~': '~', ' ': ' ', ',': ' ', ';': ' ',
-           '!': '', '\\': '  \n', '-': '', '/': '', '"': '"'}
+           '!': '', '\\': '  \n', '-': '', '/': ''}
 STYLE = {'textbf': ('**', '**'), 'textit': ('*', '*'), 'emph': ('*', '*'),
          'texttt': ('`', '`'), 'underline': ('<u>', '</u>')}
 SUPPORTED_ENVS = {'enumerate', 'itemize', 'quote', 'center', 'titlepage', 'document', 'keywordoverview'}
@@ -428,7 +429,10 @@ class Converter:
                     self.stats['citation_occurrences'] += int(not dry)
                 elif name in {'L', 'l'}: out.append('Ł' if name == 'L' else 'ł')
                 elif name == '"':
-                    out.append(ACCENTS.get(arg().strip(), arg().strip()))
+                    letter = arg().strip()
+                    if letter not in ACCENTS:
+                        raise ConversionError(f'{n.location}: unsupported TeX diaeresis accent: {letter}')
+                    out.append(ACCENTS[letter])
                 elif name == 'MakeUppercase': out.append(arg().upper())
                 elif name == 'textcolor': out.append(arg(1))
                 elif name == 'InternalNote':
@@ -837,7 +841,7 @@ enable = true
         self._audit(out)
         self.stats['references_used']=len(self.citations)
         self.stats['pages']=len(self.pages)+2+int(bool(appendix))+int(bool(originals)) # README + References + appendix navigation
-        report={'version':'0.1.0', 'source_entry':self.main, 'statistics':dict(sorted(self.stats.items())),
+        report={'version':__version__, 'source_entry':self.main, 'statistics':dict(sorted(self.stats.items())),
                 'labels':{k:vars(v) for k,v in sorted(self.labels.items())},
                 'citations':self.citations,
                 'source_files':sorted(str(x.relative_to(self.root)) for x in self._files_read)}

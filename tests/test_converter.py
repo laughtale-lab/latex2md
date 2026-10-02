@@ -96,6 +96,34 @@ class ConversionTests(unittest.TestCase):
                 convert(root/'s',root/'out')
             self.assertFalse((root/'out').exists())
 
+    def test_diaeresis_transliterates_in_prose_and_keyword_table(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            accent=r' L\"owdin and L\"{o}wdin.'
+            convert_source=CHAPTER.replace('Explains the input value.',
+                                           'Explains the input value.' + accent)
+            manual(root/'s',chapter=convert_source + accent)
+            convert(root/'s',root/'out')
+            text=(root/'out/src/first.md').read_text(encoding='utf8')
+            self.assertIn('Löwdin and Löwdin',text)
+            self.assertNotIn('L"owdin',text)
+
+    def test_bibliography_url_only(self):
+        # Regression: a BibTeX URL without a DOI renders a valid Markdown link.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            manual(root / 's', bib='@misc{paper,title={Manual},url={https://example.org/manual}}')
+            convert(root / 's', root / 'out')
+            text = (root / 'out/src/references.md').read_text(encoding='utf8')
+            self.assertIn('[Link](https://example.org/manual)', text)
+
+    def test_bibliography_rejects_unsafe_url(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            manual(root / 's', bib='@misc{paper,title={Manual},url={javascript:alert(1)}}')
+            with self.assertRaisesRegex(ConversionError, 'unsupported URL scheme'):
+                convert(root / 's', root / 'out')
+
     def test_missing_bibliography_entry(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);manual(root/'s',bib='@article{somethingelse,title={unused}}')
