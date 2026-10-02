@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.3 — native mdBook heading anchors (candidate)
+
+- Render chapter, section, subsection and appendix label IDs as mdBook-native
+  Markdown heading attributes (`{#label}`), preserving exact LaTeX IDs and links.
+- Render non-heading labels, keyword targets and bibliography targets as
+  ID-bearing HTML `div` elements; leave Script/Example caption IDs in place.
+- Validate label names, generated Markdown targets and all registered IDs
+  again **after actual mdBook rendering** in `latex2md.html_audit`.
+- Expand regression tests for heading adjacency, non-heading labels, malformed
+  IDs, missing or duplicate rendered HTML IDs, and bibliography targets.
+- No changes to LaTeX sources or the established manual conversion baselines.
+
+
 ## 0.1.2 — diaeresis and conversion-report version fix (candidate)
 
 - Treat `\"o` and `\"{o}` as TeX accent commands rather than literal quotes.
