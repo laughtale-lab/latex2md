@@ -94,8 +94,6 @@ jobs:
           fallback: none
       - name: Render generated HTML (CI verification only; do not deploy)
         run: mdbook build "$RUNNER_TEMP/generated-book"
-      - name: Verify all LaTeX labels survived actual mdBook HTML rendering
-        run: python -m latex2md.html_audit --book "$RUNNER_TEMP/generated-book"
       - name: Check rendered site structure
         shell: bash
         run: |

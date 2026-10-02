@@ -57,18 +57,3 @@ the verified PDF via an internal workflow artifact to a dependent build job.
 **Important:** this snippet is a *phase 3 recipe*, not a change to the
 currently operating PDF-only Manual workflow. Do not create a second Pages
 workflow in the converter repository.
-
-
-## Native mdBook anchors (latex2md 0.1.3 and later)
-
-The converter now binds every heading-adjacent LaTeX `\label` to its heading
-using mdBook's native `{#label}` syntax. Keyword and bibliography targets use
-explicit HTML `div` IDs, and Script/Example captions retain their IDs. Do **not**
-run `tools/prepare-mdbook-anchors.py` on output produced by 0.1.3+.
-
-The Manual repository's *source* audit must recognize native heading attributes
-in addition to HTML `id` attributes. Continue running its *rendered-site* audit
-after mdBook builds. The converter's own CI runs
-`python -m latex2md.html_audit --book "$RUNNER_TEMP/generated-book"` against real
-mdBook output to ensure every label from `conversion-report.json` survives HTML
-rendering. Only upgrade `tools/latex2md.sha` after that CI passes.

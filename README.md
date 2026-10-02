@@ -8,7 +8,7 @@ mdBook-compatible Markdown from the Manual's existing LaTeX without modifying
 any LaTeX macros, chapter sources, artwork, example files, or print layout.
 The Manual's LaTeX repository remains its **only editable document source**.
 
-> **Release status:** `0.1.3` candidate. Verified locally against the supplied
+> **Release status:** `0.1.2` candidate. Verified locally against the supplied
 > Diabat 2.0 LaTeX snapshot. Review the independent repository's GitHub Actions
 > smoke test against its *current* public Manual before tagging a stable release.
 > This repository alone does **not** publish the official Manual website.
@@ -69,10 +69,6 @@ link deliberately targets the root of that future combined published site.
   bibliography entries and cited-only reference numbering.
 - Script theme CSS and JavaScript highlighting: blue `$`, pink-purple job/
   block names, red strings, light green comments, gray caption numbers.
-- mdBook-native `{#id}` headings for all labeled chapters/sections/appendices,
-  plus preserved stable IDs for keywords, Script/Example captions and citations.
-  `latex2md.html_audit` verifies every label in the **rendered HTML**, not just
-  in the intermediate Markdown. No Manual-repository anchor-rewrite step.
 - Two-pass registration; explicit errors for unsupported active markup,
   duplicate/unresolved IDs, invalid source paths and missing resources.
 
@@ -91,7 +87,6 @@ latex2md build --source /path/to/Diabat-manual --output /tmp/clean-book
 latex2md-verify --report /tmp/clean-book/conversion-report.json \
   --baseline docs/diabat-2.0-baseline.json
 mdbook build /tmp/clean-book
-python -m latex2md.html_audit --book /tmp/clean-book
 ```
 
 The frozen baseline corresponds to the supplied 2.0 LaTeX **snapshot**, not
