@@ -681,7 +681,9 @@ class Converter:
                             pages, notes] if s]
         url=f.get('doi')
         if url: bits.append(f'[DOI](https://doi.org/{quote(url.strip())})')
-        elif f.get('url'):bits.append(f'[Link]({safe_url(f["url"],'bib:'+entry.key)})')
+        elif f.get("url"):
+            url = safe_url(f["url"], "bib:" + entry.key)
+            bits.append(f"[Link]({url})")
         if not bits: raise ConversionError(f'empty bibliography entry: {entry.key}')
         return f'<a id="cite-{slug(entry.key)}"></a>\n\n{order}. '+'; '.join(bits)+'.\n\n'
 
