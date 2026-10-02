@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diabat-latex2md"
+version = "0.1.0"
+description = "Strict LaTeX-to-mdBook conversion with Diabat Manual adapters"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "Diabat contributors"}]
+keywords = ["latex", "markdown", "mdbook", "diabat", "manual"]
+classifiers = ["Programming Language :: Python :: 3", "Topic :: Text Processing :: Markup"]
+dependencies = []
+
+[project.scripts]
+latex2md = "latex2md.cli:main"
+latex2md-verify = "latex2md.verify:main"
+
+[project.urls]
+Repository = "https://github.com/laughtale-lab/latex2md"
+Manual = "https://github.com/laughtale-lab/diabat-manual"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+latex2md = ["resources/*.css", "resources/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

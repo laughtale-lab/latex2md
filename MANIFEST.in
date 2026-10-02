@@ -1,0 +1,6 @@
+include LICENSE README.md pyproject.toml
+recursive-include src/latex2md/resources *.css *.js
+recursive-include docs *.md *.json
+recursive-include tests *.py
+include .gitignore
+include CHANGELOG.md

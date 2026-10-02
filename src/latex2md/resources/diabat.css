@@ -1,0 +1,10 @@
+:root { --diabat-blue:#2266bf; --diabat-job:#bb5aab; --diabat-string:#bf283e; --diabat-comment:#4eaa6f; --diabat-caption:#666; }
+.listing-caption { color:var(--diabat-caption); font-size:.92rem; font-weight:700; margin:1.65rem 0 .3rem; }
+.keyword-table { border-collapse:collapse; }
+.content main a { overflow-wrap:anywhere; }
+.content main table code { white-space:normal; }
+.content main table { max-width:100%; }
+.hljs-diabat-block-mark, .diabat-block-mark { color:var(--diabat-blue)!important; font-weight:700; }
+.hljs-diabat-job, .diabat-job { color:var(--diabat-job)!important; font-weight:600; }
+.hljs-string, .diabat-string { color:var(--diabat-string)!important; }
+.hljs-comment, .diabat-comment { color:var(--diabat-comment)!important; }
