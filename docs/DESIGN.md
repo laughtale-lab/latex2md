@@ -41,13 +41,24 @@ plus a fixture and an integration test.
 
 ## Link rules
 
-For a label such as `key-fphd-refid`, a table contains
-`<a id="key-fphd-refid"></a>`. Cross-chapter references use a relative page
-path and fragment, e.g. `diabatization.md#key-fphd-refid`; same-page references
-use `#key-fphd-refid`. `\script{chap-diabat}{script-fphd-job}` validates both
-chapter and caption and formats `Script 4-1` from source counters.
-Bibliography entries are numbered in first-citation order, and have stable
-`cite-<slug>` anchors independent of that temporary numbering.
+A heading-adjacent label such as `\subsection{...}\label{sec-stdout}`
+becomes `### ... {#sec-stdout}`, using mdBook-native heading attributes rather
+than raw empty `<a>` tags. This also applies to numbered chapters and the
+appendix navigation heading. A keyword such as `key-fphd-refid` uses
+`<div class="manual-anchor" id="key-fphd-refid"></div>` immediately before
+its Markdown table. A non-heading `\label` is likewise an ID-bearing empty
+`div`; Script/Example captions are visible `div` elements carrying their IDs.
+Cross-chapter references use a relative page plus fragment, e.g.
+`diabatization.md#key-fphd-refid`; same-page links use `#key-fphd-refid`.
+`\script{chap-diabat}{script-fphd-job}` validates both chapter and caption
+and formats `Script 4-1` from source counters. Bibliography entries are
+numbered in first-citation order and have stable `cite-<slug>` div IDs
+independent of that temporary numbering. The renderer uses structured parsed
+nodes to associate headings with labels; it does not regex-rewrite Markdown.
+
+Finally, `latex2md.html_audit` verifies that *the rendered mdBook HTML*, not
+merely intermediate Markdown, contains each registered label and citation ID
+exactly once at the documented destination page.
 
 ## Palette
 

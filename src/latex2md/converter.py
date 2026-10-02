@@ -72,6 +72,8 @@ RE_ESCAPE = re.compile(r'@([^@\n]+)@')  # Targeted documented listings escape ma
 RE_CAPTION = re.compile(r'^\\(scriptnum|examplenum)\{([\w-]+)\}(?:\\enlargethispage\{[^}]+\})?$')
 RE_MATH_EXPR = re.compile(r'\$(?!\$)([^\n]+?)\$(?!\$)')  # Only BibTeX prose math
 RE_OUTPUT_FILENAME = re.compile(r'^[a-zA-Z0-9_./-]+$')
+# mdBook heading attributes and HTML IDs require safe, stable label names.
+ANCHOR_ID = re.compile(r'[A-Za-z][A-Za-z0-9_.:-]*\Z')
 
 
 class ConversionError(ValueError):
@@ -195,6 +197,8 @@ class Converter:
 
     def _add_label(self, key: str, kind: str, number: str, display: str, location: str) -> None:
         if not key.strip(): raise ConversionError(f'{location}: empty label')
+        if not ANCHOR_ID.fullmatch(key):
+            raise ConversionError(f'{location}: unsupported HTML/mdBook label ID: {key!r}')
         if key in self.labels:
             old = self.labels[key]
             raise ConversionError(f'{location}: duplicate label {key} (first in {old.page})')
@@ -577,7 +581,7 @@ class Converter:
         if len(values) != len(headings): raise ConversionError(f'{n.location}: keyword field mismatch')
         rows = [f'| **Identifier** | <code>{html.escape(caption)}</code> |', '| --- | --- |']
         rows.extend(f'| **{heading}** | {value} |' for heading,value in zip(headings, values))
-        return f'<a id="{html.escape(key)}"></a>\n\n' + '\n'.join(rows) + '\n\n'
+        return f'<div class="manual-anchor" id="{html.escape(key)}"></div>\n\n' + '\n'.join(rows) + '\n\n'
 
     def _overview(self, n: Node) -> str:
         rows=['| Keyword | Purpose |', '| --- | --- |']
@@ -592,16 +596,32 @@ class Converter:
             else: raise ConversionError(f'{entry.location}: only \\keyitem allowed in keywordoverview')
         return '\n'.join(rows)+'\n\n'
 
-    def blocks(self, nodes: list[Node]) -> str:
-        out=[]; inline=[]
+    def blocks(self, nodes: list[Node], *, page_heading: str | None = None) -> str:
+        # Bind LaTeX labels directly to the heading node while rendering the
+        # structured parser output, not by regex-rewriting generated Markdown.
+        # This also covers chapter titles, which are synthesized by Page.
+        out = [page_heading + '\n\n'] if page_heading is not None else []
+        pending_heading = 0 if page_heading is not None else None
+        inline = []
+
         def flush():
+            nonlocal pending_heading
             if inline:
-                contents=self.inline(inline).strip()
-                if contents: out.append(contents+'\n\n')
+                contents = self.inline(inline).strip()
+                if contents:
+                    pending_heading = None
+                    out.append(contents + '\n\n')
                 inline.clear()
+
         for n in nodes:
             if n.kind in {'text','group','math','math-display','break'}:
-                inline.append(n); continue
+                # Only whitespace may intervene between a heading and its
+                # LaTeX \label. Once ordinary content starts, a later label
+                # is an independent bookmark, not the title's ID.
+                if pending_heading is not None and (n.kind != 'text' or n.value.strip()):
+                    pending_heading = None
+                inline.append(n)
+                continue
             if n.kind == 'macro':
                 name=n.value.rstrip('*')
                 if name in {'chapter','section','subsection','subsubsection','paragraph'}:
@@ -617,17 +637,42 @@ class Converter:
                             self._subsection_render+=1
                             title=f'{self._render_page.number}.{self._section_render}.{self._subsection_render} '+title
                         out.append('#'*depth+' '+title+'\n\n')
+                        pending_heading = len(out) - 1
                     continue
                 if name == 'label':
-                    key=plain(n.args[0]);flush()
-                    if key not in self.labels: raise ConversionError(f'{n.location}: unknown label {key}')
+                    key = plain(n.args[0])
+                    if key not in self.labels:
+                        raise ConversionError(f'{n.location}: unknown label {key}')
                     if self.labels[key].page != self._render_page.filename:
                         # TeX's appendix divider becomes a dedicated mdBook page.
+                        flush()
+                        pending_heading = None
                         continue
-                    out.append(f'<a id="{html.escape(key)}"></a>\n\n');continue
+                    if (pending_heading is not None and
+                            all(x.kind == 'text' and not x.value.strip() for x in inline)):
+                        # mdBook >=0.4.30 renders this as id="label" on the
+                        # heading itself. Standalone empty <a> tags could be
+                        # moved or dropped during CommonMark rendering.
+                        out[pending_heading] = (out[pending_heading][:-2] +
+                                                f' {{#{key}}}\n\n')
+                        pending_heading = None
+                        inline.clear()
+                    else:
+                        # Genuine non-heading \label: preserve a standalone
+                        # target in an HTML element that mdBook retains.
+                        flush()
+                        pending_heading = None
+                        out.append(f'<div class="manual-anchor" id="{html.escape(key)}"></div>\n\n')
+                    continue
                 if name in {'appendix','printbibliography','addcontentsline','addtocontents'}:
-                    flush();continue
-                if name == 'keyword': flush();out.append(self._keyword(n));continue
+                    flush()
+                    pending_heading = None
+                    continue
+                if name == 'keyword':
+                    flush()
+                    pending_heading = None
+                    out.append(self._keyword(n))
+                    continue
                 if name == 'outputfile':
                     flush();self._output_render += 1
                     title=self.inline(n.args[0]).strip()
@@ -653,16 +698,23 @@ class Converter:
                     out.append(f'<div class="listing-caption" id="{html.escape(key)}">{label} {t.display}</div>\n\n')
                     continue
                 if name in {'hline','rowcolor'}: continue
+                pending_heading = None
                 inline.append(n)
                 continue
             if n.kind == 'verbatim':
                 flush()
+                pending_heading = None
                 lang='bash' if n.value in {'ShellBlock','lst-installation'} else ('diabat' if n.value in {'lst-script','DiabatScript'} else 'text')
                 out.append(self._listing(n.children[0].value,n.location,lang))
                 continue
-            if n.kind == 'table':flush();out.append(self._table(n));continue
+            if n.kind == 'table':
+                flush()
+                pending_heading = None
+                out.append(self._table(n))
+                continue
             if n.kind == 'env':
                 flush()
+                pending_heading = None
                 if n.value=='keywordoverview':out.append(self._overview(n))
                 else:out.append(self._env(n))
                 continue
@@ -689,7 +741,7 @@ class Converter:
             url = safe_url(f["url"], "bib:" + entry.key)
             bits.append(f"[Link]({url})")
         if not bits: raise ConversionError(f'empty bibliography entry: {entry.key}')
-        return f'<a id="cite-{slug(entry.key)}"></a>\n\n{order}. '+'; '.join(bits)+'.\n\n'
+        return f'<div class="manual-anchor" id="cite-{slug(entry.key)}"></div>\n\n{order}. '+'; '.join(bits)+'.\n\n'
 
     def _bib_text(self, raw: str) -> str:
         # Strip protective BibTeX braces as groups, not global substitutions.
@@ -738,17 +790,22 @@ class Converter:
         self._render_page=page
         self._output_render=0
         self._section_render=0
-        body=self.blocks(page.nodes)
-        prefix=('# '+(page.number+' ' if page.number else '')+page.title+'\n\n')
-        return prefix+body
+        heading = '# ' + (page.number + ' ' if page.number else '') + page.title
+        return self.blocks(page.nodes, page_heading=heading)
 
     def _audit(self, dest: Path) -> None:
-        # Every referenced heading, keyword and code caption must exist as an
-        # HTML anchor in its destination page; Markdown links are also checked.
-        for key,t in self.labels.items():
-            p=dest/t.page
-            text=p.read_text(encoding='utf-8')
-            if f'id="{key}"' not in text:
+        # Check every registered label against the actual generated syntax.
+        # Heading attributes are rendered by mdBook to matching HTML IDs;
+        # other labels use explicit ID-bearing elements.
+        def contains_anchor(content: str, label: str) -> bool:
+            native = re.search(r'^#{1,6} [^\n]* \{#' + re.escape(label) + r'\}\s*$',
+                               content, re.MULTILINE)
+            return bool(native or f'id="{label}"' in content)
+
+        for key, t in self.labels.items():
+            p = dest / t.page
+            content = p.read_text(encoding='utf-8')
+            if not contains_anchor(content, key):
                 raise ConversionError(f'missing destination anchor {key} in {p}')
         for p in dest.glob('*.md'):
             contents=p.read_text(encoding='utf-8')
@@ -760,10 +817,7 @@ class Converter:
                         raise ConversionError(f'{p}: missing linked page {other}')
                     file=(dest/other) if other else p
                     anchor=label
-                    if anchor.startswith('cite-'):
-                        if f'id="{anchor}"' not in file.read_text(encoding='utf-8'):
-                            raise ConversionError(f'{p}: missing citation anchor {anchor}')
-                    elif f'id="{anchor}"' not in file.read_text(encoding='utf-8'):
+                    if not contains_anchor(file.read_text(encoding='utf-8'), anchor):
                         raise ConversionError(f'{p}: missing hyperlink anchor {anchor}')
                 elif link.endswith('.md') and not (dest/link).is_file():
                     raise ConversionError(f'{p}: missing linked page {link}')
@@ -801,7 +855,7 @@ class Converter:
         if appendix:
             summary.extend(['','---','','- [Appendices](appendices.md)'])
             for p in appendix:summary.append(f'    - [Appendix {p.number}: {p.title}]({p.filename})')
-            (out/'appendices.md').write_text('# Appendices\n\n<a id="app-divider"></a>\n\n'+'\n'.join(
+            (out/'appendices.md').write_text('# Appendices {#app-divider}\n\n'+'\n'.join(
                 f'- [Appendix {p.number}: {p.title}]({p.filename})' for p in appendix)+'\n',encoding='utf8')
         originals=self._copy_examples(out)
         if originals:
