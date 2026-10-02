@@ -35,19 +35,3 @@ Node.js and the original manual, but did **not** contain an mdBook executable
 or network package installer. Hence no local claim is made that a real mdBook
 HTML build or browser rendering has already passed; the Actions job checks
 that separately when the repository is available online.
-
-
-## Rendered HTML anchor gate
-
-A successful Markdown source audit alone does not prove that mdBook preserved
-any raw HTML anchors. After running the pinned mdBook builder (0.4.52), run:
-
-```bash
-python -m latex2md.html_audit --book /path/to/generated-book
-```
-
-This independent gate verifies each label in `conversion-report.json` and each
-cited bibliography ID occurs exactly once in the appropriate generated HTML
-page. Missing pages, lost heading IDs and duplicate targets fail CI. It runs in
-the independent converter's `manual-smoke` GitHub Actions job. The separate
-Manual repository should also audit final link destinations and PDF identity.
