@@ -1,5 +1,6 @@
 :root { --diabat-blue:#2266bf; --diabat-job:#bb5aab; --diabat-string:#bf283e; --diabat-comment:#4eaa6f; --diabat-caption:#666; }
-.listing-caption { color:var(--diabat-caption); font-size:.92rem; font-weight:700; margin:1.65rem 0 .3rem; }
+.listing-caption { color:var(--diabat-caption); font-size:.92rem; font-weight:700; margin:1.65rem 0 .3rem; scroll-margin-top:4rem; }
+.target-anchor { scroll-margin-top:4rem; }
 .keyword-table { border-collapse:collapse; }
 .content main a { overflow-wrap:anywhere; }
 .content main table code { white-space:normal; }

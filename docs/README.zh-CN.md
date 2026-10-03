@@ -1,45 +1,50 @@
 # latex2md：中文使用指南
 
-独立仓库 `laughtale-lab/latex2md`，适配 Diabat 2.0 Manual 既有的 LaTeX
-源文件，不修改 LaTeX 正文和排版。代码使用 MIT 许可证；手册内容及图片继续遵守原手册许可证。
+`latex2md` 独立于 `diabat-manual`，适配现有 Diabat Manual LaTeX 源码，
+不修改 Manual 正文、宏定义和印刷排版。LaTeX 始终是唯一正文源文件。
 
-## 安装
+## 安装与转换
 
-需要 Python 3.11 或更高版本，不需要第三方 Python 运行依赖。
+需要 Python 3.11 或更高版本：
 
 ```bash
 python -m pip install .
 latex2md build --source /path/to/diabat-manual --output /tmp/diabat-book
 ```
 
-`--output` 应为空目录或者尚不存在。生成 `book.toml`、`src/SUMMARY.md`、
-逐章 Markdown、关键词链接、参考文献、数学公式及代码配色脚本。
-原始 `.inp` / `.gjf` 按字节复制至 `src/downloads/examples/`，
-排版专用 `.lst` 则只转成网页代码块。部分计算示例仍需要外部计算数据。
+标题后的 LaTeX `\label` 会结构化绑定到标题，并生成 mdBook 原生 heading
+attribute，例如：
 
-预览（第二阶段仅验证转换，不正式发布网页）：
+```markdown
+### 2.2.1 Standard output and error output { #sec-stdout }
+```
+
+Script、Example、关键词、独立 label 和参考文献使用显式、唯一的 HTML
+目标。`conversion-report.json` 的 `targets` 字段记录最终网页必须出现的
+全部目标。
+
+## 固定 mdBook 0.4.52 后的最终审计
 
 ```bash
 mdbook build /tmp/diabat-book
-mdbook serve /tmp/diabat-book --open
-```
-
-当前建议锁定 mdBook 0.4.52；更换 mdBook 或转换器版本应分别回归测试。
-
-## 自动测试与发布原则
-
-```bash
-python -m unittest discover -s tests -v
-latex2md-verify \
+latex2md-audit-html \
   --report /tmp/diabat-book/conversion-report.json \
-  --baseline docs/diabat-2.0-baseline.json
+  --html /tmp/diabat-book/book \
+  --allow-missing diabat.pdf
 ```
 
-基线是这次上传手册的快照，而不是后续章节不能变化的限制。
-CI 会检出公开的 `diabat-manual` 当前 `main` 并测试转换、HTML 预览。
-正式接入第一仓库前，仍需该仓库指定转换器已验证的**提交 SHA**。
-全部步骤完成且成功后才与对应的 PDF 一起部署。
+`--allow-missing diabat.pdf` **只用于转换器独立 CI**，因为此时 PDF 尚未
+由 Manual 仓库一起放入网站目录。正式 `diabat-manual` 发布时必须先把
+PDF 和 HTML 放入同一 staging 目录，再运行不带该例外的最终审计。
 
-若某个宏、标签、资源或者文献失效，程序会以非零返回值结束，
-不会在错误情况下生成并替换正式发布目录。具体设计和接入方案分别
-见 `docs/DESIGN.md` 和 `docs/INTEGRATION.md`。
+审计会检查每个登记目标在真实 mdBook HTML 中恰好出现一次，标题目标
+必须位于正确的 h1/h2/h3 等元素，Script/Example 必须保留
+`listing-caption` 语义；所有本地页面、fragment 和资源都必须真实存在。
+任何失败都会返回非零状态，禁止继续发布。
+
+## 发布原则
+
+CI 固定使用 mdBook 0.4.52，并先跑最小真实渲染 fixture，再跑完整当前
+Manual。只有两个真实 mdBook HTML 审计都通过并完成人工网页检查后，
+才可以给转换器创建新 tag。正式 Manual 集成始终固定转换器完整 commit
+SHA，不跟随 `latex2md/main`，也不使用 submodule。

@@ -27,6 +27,8 @@ class Target:
     number: str
     kind: str
     display: str
+    render: str
+    source: str
 
 
 @dataclass
@@ -35,6 +37,7 @@ class Page:
     title: str
     number: str
     nodes: list[Node]
+    anchor: str | None = None
 
 
 ALIASES = {
@@ -72,6 +75,7 @@ RE_ESCAPE = re.compile(r'@([^@\n]+)@')  # Targeted documented listings escape ma
 RE_CAPTION = re.compile(r'^\\(scriptnum|examplenum)\{([\w-]+)\}(?:\\enlargethispage\{[^}]+\})?$')
 RE_MATH_EXPR = re.compile(r'\$(?!\$)([^\n]+?)\$(?!\$)')  # Only BibTeX prose math
 RE_OUTPUT_FILENAME = re.compile(r'^[a-zA-Z0-9_./-]+$')
+RE_HTML_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.:-]*$')
 
 
 class ConversionError(ValueError):
@@ -115,6 +119,13 @@ class Converter:
         self._current_page: Page | None = None
         self._current_heading: str = ''
         self._files_read: set[Path] = set()
+        # Heading labels are bound structurally before registration. The key is
+        # the identity of the parsed heading node, not title text or line number.
+        self._heading_labels: dict[int, str] = {}
+        self._heading_kinds: dict[str, str] = {}
+        self._heading_nodes_by_label: dict[str, int] = {}
+        self._heading_label_nodes: set[int] = set()
+        self._citation_targets: dict[str, Target] = {}
 
     def inside(self, raw: str, extension: str = '') -> Path:
         candidate = self.root / (raw if not extension or Path(raw).suffix else raw + extension)
@@ -189,18 +200,71 @@ class Converter:
                 if key not in self.references:
                     self.references[key] = entry
         self._files_read.add(self.root / 'references-build.bib')
+        self._bind_heading_labels(nodes)
         self._register(nodes)
+        self._register_citation_targets()
         self._gather_cover_images()
         self.stats['tex_files'] = len([p for p in self._files_read if p.suffix == '.tex'])
 
-    def _add_label(self, key: str, kind: str, number: str, display: str, location: str) -> None:
-        if not key.strip(): raise ConversionError(f'{location}: empty label')
+    @staticmethod
+    def _blank_node(node: Node) -> bool:
+        return node.kind == 'text' and not node.value.strip()
+
+    def _bind_heading_labels(self, nodes: list[Node]) -> None:
+        """Bind a label only when it structurally follows one heading.
+
+        Whitespace/comment-derived blank text may occur between the heading and
+        ``\\label``. Any other node ends the binding opportunity. This prevents
+        later prose labels from being guessed as title labels.
+        """
+        heading_names = {'chapter', 'section', 'subsection', 'subsubsection', 'paragraph'}
+        for index, node in enumerate(nodes):
+            if node.kind == 'env':
+                self._bind_heading_labels(node.children)
+            if node.kind != 'macro' or node.value.rstrip('*') not in heading_names:
+                continue
+            cursor = index + 1
+            while cursor < len(nodes) and self._blank_node(nodes[cursor]):
+                cursor += 1
+            if cursor >= len(nodes):
+                continue
+            candidate = nodes[cursor]
+            if candidate.kind != 'macro' or candidate.value != 'label':
+                continue
+            key = plain(candidate.args[0]).strip()
+            if not key:
+                raise ConversionError(f'{candidate.location}: empty heading label')
+            if key in self._heading_nodes_by_label:
+                raise ConversionError(f'{candidate.location}: heading label bound twice: {key}')
+            node_id = id(node)
+            self._heading_labels[node_id] = key
+            self._heading_kinds[key] = node.value.rstrip('*')
+            self._heading_nodes_by_label[key] = node_id
+            self._heading_label_nodes.add(id(candidate))
+
+    def _add_label(self, key: str, kind: str, number: str, display: str,
+                   location: str, *, render: str, counter: str) -> None:
+        key = key.strip()
+        if not key:
+            raise ConversionError(f'{location}: empty label')
+        if not RE_HTML_ID.fullmatch(key):
+            raise ConversionError(f'{location}: label is not a safe stable HTML id: {key}')
         if key in self.labels:
             old = self.labels[key]
             raise ConversionError(f'{location}: duplicate label {key} (first in {old.page})')
         assert self._current_page
-        self.labels[key] = Target(key, self._current_page.filename, number, kind, display)
-        self.stats[f'{kind}_labels'] += 1
+        self.labels[key] = Target(key, self._current_page.filename, number, kind,
+                                  display, render, location)
+        self.stats[f'{counter}_labels'] += 1
+
+    def _register_citation_targets(self) -> None:
+        for key in self.citations:
+            anchor = 'cite-' + slug(key)
+            if anchor in self.labels or anchor in self._citation_targets:
+                raise ConversionError(f'duplicate generated citation target: {anchor}')
+            self._citation_targets[anchor] = Target(
+                anchor, 'references.md', '', 'citation', key, 'raw-html', f'bib:{key}'
+            )
 
     def _new_page(self, name: str, virtual=False, loc='') -> None:
         if virtual:
@@ -235,8 +299,10 @@ class Converter:
                     self._example += 1
                     num = self._example
                     labelkind = 'example'
-                self._add_label(key, labelkind, str(num),
-                                f'{self._current_page.number}-{num}', loc)
+                self._add_label(
+                    key, labelkind, str(num), f'{self._current_page.number}-{num}', loc,
+                    render='raw-html', counter=labelkind
+                )
             elif token == r'\textcolor{mygreen}{\$}':
                 pass
             else:
@@ -267,23 +333,45 @@ class Converter:
                             self._subsection += 1
                             self._current_heading = f'{self._current_page.number}.{self._section}.{self._subsection}'
                         # TeX book class defaults to unnumbered subsubsections.
-                elif name == 'label':
-                    if plain(n.args[0]) == 'app-divider':
-                        if 'app-divider' in self.labels:
-                            raise ConversionError(f'{n.location}: duplicate app-divider')
-                        self.labels['app-divider']=Target('app-divider', 'appendices.md', '', 'appendix', 'Appendices')
-                        if self._current_page: self._current_page.nodes.append(n)
-                        continue
+
+                heading_key = self._heading_labels.get(id(n))
+                if heading_key is not None:
                     if not self._current_page:
-                        raise ConversionError(f'{n.location}: label outside chapter')
-                    key = plain(n.args[0])
-                    number = self._current_heading or self._current_page.number
-                    self._add_label(key, 'section', number, number, n.location)
+                        raise ConversionError(f'{n.location}: heading label outside a page: {heading_key}')
+                    self._add_label(
+                        heading_key, name, self._current_heading or self._current_page.number,
+                        self._current_heading or self._current_page.number, n.location,
+                        render='heading', counter='section'
+                    )
+                    if name == 'chapter':
+                        self._current_page.anchor = heading_key
+                if name == 'label':
+                    key = plain(n.args[0]).strip()
+                    if id(n) in self._heading_label_nodes:
+                        # This exact label node is rendered by the preceding heading.
+                        pass
+                    elif key == 'app-divider':
+                        if key in self.labels:
+                            raise ConversionError(f'{n.location}: duplicate app-divider')
+                        self.labels[key] = Target(
+                            key, 'appendices.md', '', 'appendix', 'Appendices',
+                            'raw-html', n.location
+                        )
+                    else:
+                        if not self._current_page:
+                            raise ConversionError(f'{n.location}: label outside chapter')
+                        number = self._current_heading or self._current_page.number
+                        self._add_label(
+                            key, 'standalone', number, number, n.location,
+                            render='raw-html', counter='section'
+                        )
                 elif name == 'includegraphics':
                     self._register_image(plain(n.args[0]).strip(), n.location)
                 elif name == 'keyword':
-                    self._add_label(plain(n.args[0]), 'keyword', '',
-                                    self._macro_simple(plain(n.args[1])), n.location)
+                    self._add_label(
+                        plain(n.args[0]), 'keyword', '', self._macro_simple(plain(n.args[1])),
+                        n.location, render='raw-html', counter='keyword'
+                    )
                     self.stats['keywords'] += 1
                 elif name == 'cite':
                     self._citation_keys(plain(n.args[0]), n.location)
@@ -577,7 +665,8 @@ class Converter:
         if len(values) != len(headings): raise ConversionError(f'{n.location}: keyword field mismatch')
         rows = [f'| **Identifier** | <code>{html.escape(caption)}</code> |', '| --- | --- |']
         rows.extend(f'| **{heading}** | {value} |' for heading,value in zip(headings, values))
-        return f'<a id="{html.escape(key)}"></a>\n\n' + '\n'.join(rows) + '\n\n'
+        return (f'<div class="target-anchor keyword-target" id="{html.escape(key)}"></div>\n\n'
+                + '\n'.join(rows) + '\n\n')
 
     def _overview(self, n: Node) -> str:
         rows=['| Keyword | Purpose |', '| --- | --- |']
@@ -616,15 +705,23 @@ class Converter:
                         elif name == 'subsection' and not n.value.endswith('*'):
                             self._subsection_render+=1
                             title=f'{self._render_page.number}.{self._section_render}.{self._subsection_render} '+title
-                        out.append('#'*depth+' '+title+'\n\n')
+                        anchor = self._heading_labels.get(id(n))
+                        suffix = f' {{ #{anchor} }}' if anchor else ''
+                        out.append('#'*depth+' '+title+suffix+'\n\n')
                     continue
                 if name == 'label':
-                    key=plain(n.args[0]);flush()
+                    key=plain(n.args[0]).strip();flush()
                     if key not in self.labels: raise ConversionError(f'{n.location}: unknown label {key}')
-                    if self.labels[key].page != self._render_page.filename:
+                    target = self.labels[key]
+                    if target.render == 'heading':
+                        # The preceding heading carries the native mdBook ID.
+                        continue
+                    if target.page != self._render_page.filename:
                         # TeX's appendix divider becomes a dedicated mdBook page.
                         continue
-                    out.append(f'<a id="{html.escape(key)}"></a>\n\n');continue
+                    out.append(
+                        f'<div class="target-anchor standalone-target" id="{html.escape(key)}"></div>\n\n'
+                    );continue
                 if name in {'appendix','printbibliography','addcontentsline','addtocontents'}:
                     flush();continue
                 if name == 'keyword': flush();out.append(self._keyword(n));continue
@@ -689,7 +786,9 @@ class Converter:
             url = safe_url(f["url"], "bib:" + entry.key)
             bits.append(f"[Link]({url})")
         if not bits: raise ConversionError(f'empty bibliography entry: {entry.key}')
-        return f'<a id="cite-{slug(entry.key)}"></a>\n\n{order}. '+'; '.join(bits)+'.\n\n'
+        anchor = 'cite-' + slug(entry.key)
+        return (f'<div class="target-anchor citation-target" id="{anchor}"></div>\n\n'
+                + f'{order}. ' + '; '.join(bits) + '.\n\n')
 
     def _bib_text(self, raw: str) -> str:
         # Strip protective BibTeX braces as groups, not global substitutions.
@@ -739,34 +838,61 @@ class Converter:
         self._output_render=0
         self._section_render=0
         body=self.blocks(page.nodes)
-        prefix=('# '+(page.number+' ' if page.number else '')+page.title+'\n\n')
+        anchor = f' {{ #{page.anchor} }}' if page.anchor else ''
+        prefix=('# '+(page.number+' ' if page.number else '')+page.title+anchor+'\n\n')
         return prefix+body
 
+    def _all_targets(self) -> dict[str, Target]:
+        targets = dict(self.labels)
+        for anchor, target in self._citation_targets.items():
+            if anchor in targets:
+                raise ConversionError(f'duplicate target id across labels/citations: {anchor}')
+            targets[anchor] = target
+        return targets
+
     def _audit(self, dest: Path) -> None:
-        # Every referenced heading, keyword and code caption must exist as an
-        # HTML anchor in its destination page; Markdown links are also checked.
-        for key,t in self.labels.items():
-            p=dest/t.page
-            text=p.read_text(encoding='utf-8')
-            if f'id="{key}"' not in text:
-                raise ConversionError(f'missing destination anchor {key} in {p}')
-        for p in dest.glob('*.md'):
-            contents=p.read_text(encoding='utf-8')
+        """Audit generated Markdown before invoking mdBook.
+
+        This catches missing source-level destinations early. The authoritative
+        contract is verified later against *rendered* mdBook HTML by
+        ``latex2md-audit-html``.
+        """
+        targets = self._all_targets()
+        for anchor, target in targets.items():
+            page = dest / target.page
+            if not page.is_file():
+                raise ConversionError(f'target {anchor} points to missing Markdown page: {page}')
+            text = page.read_text(encoding='utf-8')
+            if target.render == 'heading':
+                count = len(re.findall(
+                    rf'^#{{1,6}} .+ \{{ #{re.escape(anchor)} \}}\s*$', text,
+                    flags=re.MULTILINE
+                ))
+            elif target.render == 'raw-html':
+                count = text.count(f'id="{anchor}"')
+            else:
+                raise ConversionError(f'unknown target render mode {target.render}: {anchor}')
+            if count != 1:
+                raise ConversionError(
+                    f'Markdown target {anchor} must occur exactly once in {target.page}; found {count}'
+                )
+        for page in dest.glob('*.md'):
+            contents=page.read_text(encoding='utf-8')
             for link in re.findall(r'\]\(([^)]+)\)',contents):
-                if link.startswith('http'): continue
+                if urlsplit(link).scheme:
+                    continue
                 if '#' in link:
-                    other,label=link.split('#',1)
+                    other,anchor=link.split('#',1)
                     if other and not (dest/other).is_file():
-                        raise ConversionError(f'{p}: missing linked page {other}')
-                    file=(dest/other) if other else p
-                    anchor=label
-                    if anchor.startswith('cite-'):
-                        if f'id="{anchor}"' not in file.read_text(encoding='utf-8'):
-                            raise ConversionError(f'{p}: missing citation anchor {anchor}')
-                    elif f'id="{anchor}"' not in file.read_text(encoding='utf-8'):
-                        raise ConversionError(f'{p}: missing hyperlink anchor {anchor}')
+                        raise ConversionError(f'{page}: missing linked Markdown page {other}')
+                    if anchor and anchor not in targets:
+                        raise ConversionError(f'{page}: link points to unregistered target #{anchor}')
+                    if anchor and other and targets[anchor].page != other:
+                        raise ConversionError(
+                            f'{page}: target #{anchor} is registered in {targets[anchor].page}, not {other}'
+                        )
                 elif link.endswith('.md') and not (dest/link).is_file():
-                    raise ConversionError(f'{p}: missing linked page {link}')
+                    raise ConversionError(f'{page}: missing linked Markdown page {link}')
 
     def _add_html_assets(self, out: Path) -> None:
         import importlib.resources
@@ -801,7 +927,9 @@ class Converter:
         if appendix:
             summary.extend(['','---','','- [Appendices](appendices.md)'])
             for p in appendix:summary.append(f'    - [Appendix {p.number}: {p.title}]({p.filename})')
-            (out/'appendices.md').write_text('# Appendices\n\n<a id="app-divider"></a>\n\n'+'\n'.join(
+            (out/'appendices.md').write_text(
+                '# Appendices\n\n<div class="target-anchor standalone-target" id="app-divider"></div>\n\n'
+                + '\n'.join(
                 f'- [Appendix {p.number}: {p.title}]({p.filename})' for p in appendix)+'\n',encoding='utf8')
         originals=self._copy_examples(out)
         if originals:
@@ -833,6 +961,9 @@ additional-css = ["src/diabat.css"]
 additional-js = ["src/diabat-highlight.js"]
 site-url = "/diabat-manual/"
 
+[output.html.print]
+enable = false
+
 [output.html.search]
 enable = true
 ''',encoding='utf8')
@@ -843,6 +974,7 @@ enable = true
         self.stats['pages']=len(self.pages)+2+int(bool(appendix))+int(bool(originals)) # README + References + appendix navigation
         report={'version':__version__, 'source_entry':self.main, 'statistics':dict(sorted(self.stats.items())),
                 'labels':{k:vars(v) for k,v in sorted(self.labels.items())},
+                'targets':{k:vars(v) for k,v in sorted(self._all_targets().items())},
                 'citations':self.citations,
                 'source_files':sorted(str(x.relative_to(self.root)) for x in self._files_read)}
         (destination.parent/'conversion-report.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf8')
