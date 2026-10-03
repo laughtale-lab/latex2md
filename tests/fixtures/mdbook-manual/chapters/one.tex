@@ -16,3 +16,24 @@ $
 \end{lst-script}
 
 This target is intentionally not attached to a heading.\phantomsection\label{standalone-fixture}
+
+
+\begin{enumerate}
+\item One
+\item Two
+\item Three
+\item Four
+\item Five
+\item Six
+\item Seven
+\item Integer sequence example followed by a fenced listing:
+\begin{lst-script}
+state_index = 1, 3..5, 8:12:2, 20
+\end{lst-script}
+This sentence must remain part of item eight after the fenced listing.
+\item Nine
+\end{enumerate}
+
+\subsection{After Nested Listing}\label{subsec-fixture-after-list}
+This heading is intentionally placed after an ordered-list item that contains a
+fenced code block. The rendered HTML audit must still see this heading target.

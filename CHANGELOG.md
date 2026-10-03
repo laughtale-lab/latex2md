@@ -16,6 +16,11 @@
 - Add a minimal two-chapter LaTeX fixture and a CI job that runs the real pinned
   mdBook 0.4.52 renderer before auditing its HTML.
 - Extend the full Manual CI job to run the same real mdBook 0.4.52 HTML audit.
+- Render continuation lines inside ordered/unordered list items at the exact
+  CommonMark content-column indentation, preventing nested fenced listings from
+  opening a stray outer code block that consumes following Manual sections.
+- Extend the real mdBook fixture with a fenced listing inside item 8 and a
+  labeled heading after the list, reproducing the Manual regression found by CI.
 - Preserve the existing Manual source baseline and all LaTeX input/layout rules.
 
 **Release gate:** do not tag this candidate until both the real mdBook fixture job

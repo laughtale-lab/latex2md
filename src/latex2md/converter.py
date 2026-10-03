@@ -647,9 +647,21 @@ class Converter:
             groups=[part for part in groups if any(node.kind!='text' or node.value.strip() for node in part)]
             for index, part in enumerate(groups):
                 content=self.blocks(part).strip()
-                bullet=(f'{index+1}.' if node.value == 'enumerate' else '-') + ' '
-                content=content.replace('\n\n','\n  \n  ')
-                items.append(bullet + content.replace('\n','\n  '))
+                marker=(f'{index+1}.' if node.value == 'enumerate' else '-') + ' '
+                lines=content.splitlines()
+                if not lines:
+                    raise ConversionError(f'{node.location}: empty rendered list item')
+                # CommonMark list continuation blocks must be indented to the
+                # content column established by the marker.  A fixed two-space
+                # indent is wrong for ordered items such as ``8. `` (3 columns)
+                # and ``10. `` (4 columns), and can make a nested closing fence
+                # start a brand-new outer code block that consumes later
+                # sections.  Preserve every continuation line at that column.
+                continuation=' ' * len(marker)
+                rendered=[marker + lines[0]]
+                rendered.extend(continuation + line if line else continuation
+                                for line in lines[1:])
+                items.append('\n'.join(rendered))
             self.stats['lists'] += 1
             return '\n'.join(items) + '\n\n'
         raise ConversionError(f'{node.location}: unhandled environment {node.value}')

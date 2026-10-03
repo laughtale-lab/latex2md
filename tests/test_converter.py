@@ -95,6 +95,43 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(report_json['targets']['script-one']['kind'],'script')
             self.assertEqual(report_json['targets']['cite-paper']['page'],'references.md')
 
+    def test_fenced_listing_inside_ordered_list_uses_marker_width_indent(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            chapter=CHAPTER + r"""
+\begin{enumerate}
+\item One
+\item Two
+\item Three
+\item Four
+\item Five
+\item Six
+\item Seven
+\item Integer sequence example:
+\begin{lst-script}
+state_index = 1, 3..5, 8:12:2, 20
+\end{lst-script}
+selects the requested states.
+\item Nine
+\item Ten with another listing:
+\begin{lst-script}
+mode = 10
+\end{lst-script}
+\end{enumerate}
+\subsection{After Nested Listing}\label{subsec-after-nested-listing}
+The heading after the list must remain outside every code fence.
+"""
+            manual(root/'s',chapter=chapter)
+            convert(root/'s',root/'out')
+            text=(root/'out/src/first.md').read_text(encoding='utf8')
+            self.assertIn('8. Integer sequence example:\n   \n   ```diabat\n'
+                          '   state_index = 1, 3..5, 8:12:2, 20\n'
+                          '   ```\n   \n   selects the requested states.', text)
+            self.assertIn('10. Ten with another listing:\n    \n    ```diabat\n'
+                          '    mode = 10\n    ```', text)
+            self.assertIn('### 1.1.1 After Nested Listing { #subsec-after-nested-listing }', text)
+            self.assertNotIn('\n  state_index = 1, 3..5, 8:12:2, 20\n', text)
+
     def test_non_heading_label_remains_explicit_target(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d)
