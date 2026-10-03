@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.0 — rendered HTML target contract (candidate, 2026-10-03)
+
+- Bind LaTeX labels that structurally follow chapter/section/subsection headings
+  to mdBook native heading attributes (`{ #label }`) instead of separate anchors.
+- Distinguish chapter, section, subsection, standalone, keyword, Script, Example,
+  appendix and bibliography targets in `conversion-report.json`.
+- Render non-heading targets as explicit stable HTML `<div id=...>` elements while
+  preserving gray Script/Example caption semantics.
+- Add `latex2md-audit-html`, which treats rendered mdBook HTML as the publication
+  contract and requires every registered target to occur exactly once on the
+  expected page, with correct heading/caption element semantics.
+- Audit all local rendered links, fragments and resources; broken or duplicate
+  targets fail the build.
+- Add a minimal two-chapter LaTeX fixture and a CI job that runs the real pinned
+  mdBook 0.4.52 renderer before auditing its HTML.
+- Extend the full Manual CI job to run the same real mdBook 0.4.52 HTML audit.
+- Render continuation lines inside ordered/unordered list items at the exact
+  CommonMark content-column indentation, preventing nested fenced listings from
+  opening a stray outer code block that consumes following Manual sections.
+- Extend the real mdBook fixture with a fenced listing inside item 8 and a
+  labeled heading after the list, reproducing the Manual regression found by CI.
+- Preserve the existing Manual source baseline and all LaTeX input/layout rules.
+
+**Release gate:** do not tag this candidate until both the real mdBook fixture job
+and the complete current Manual mdBook/HTML audit pass in GitHub Actions.
+
 ## 0.1.2 — diaeresis and conversion-report version fix (candidate)
 
 - Treat `\"o` and `\"{o}` as TeX accent commands rather than literal quotes.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "diabat-latex2md"
-version = "0.1.2"
+version = "0.2.0"
 description = "Strict LaTeX-to-mdBook conversion with Diabat Manual adapters"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,6 +17,7 @@ dependencies = []
 [project.scripts]
 latex2md = "latex2md.cli:main"
 latex2md-verify = "latex2md.verify:main"
+latex2md-audit-html = "latex2md.htmlaudit:main"
 
 [project.urls]
 Repository = "https://github.com/laughtale-lab/latex2md"

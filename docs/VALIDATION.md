@@ -1,37 +1,50 @@
 # Verification and release gates
 
-## Offline checks on the provided 2.0 Manual snapshot
+A source conversion that exits successfully is necessary but not sufficient.
+The release contract is the HTML produced by the fixed mdBook renderer. The generated
+book disables mdBook's concatenated print page so registered IDs remain unique across
+canonical HTML pages.
 
-- Parser, bibliography, deterministic output, broken reference, duplicate ID,
-  missing input, path confinement, and atomic failure are tested in
-  `tests/test_parser.py` and `tests/test_converter.py`.
-- The CLI's full-manual conversion was exercised on the original uploaded
-  **156-member** LaTeX source archive (not a fabricated stripped test case).
-- Conversion reports an independent index of labels/citations and a list of
-  source files read, so reviewers can see exactly which source revision was
-  processed. `docs/diabat-2.0-baseline.json` records reviewed counts.
-- The preview outputs must be regarded as generated artifacts; do not copy
-  edited Markdown back into the Manual repository.
+## Local/unit gates
 
-## Online tests to run before tagging a stable converter
+```bash
+python -m compileall -q src tests
+python -m unittest discover -s tests -v
+latex2md build --source /path/to/diabat-manual --output /tmp/diabat-book
+latex2md-verify \
+  --report /tmp/diabat-book/conversion-report.json \
+  --baseline docs/diabat-2.0-baseline.json
+```
 
-1. Push this repository to a new public `laughtale-lab/latex2md` repository;
-   Actions are read-only by default. Review the `tests` matrix on supported
-   Python 3.11, 3.12 and 3.13.
-2. Review `manual-smoke`: it checks out the real public Manual's current `main`,
-   generates Markdown and invokes **mdBook 0.4.52**. No output is published by
-   this repository's workflow; its artifact is review material only.
-3. Inspect the generated HTML manually, especially the FPHD keyword links,
-   Appendix references, math display, all 68 code blocks, Script/Example
-   numbering, DOI links, downloadable original `.inp` files, and the custom
-   syntax highlighter with search working.
-4. Tag a reviewed converter SHA (for example `v0.1.0`) only after all tests
-   pass. The Manual build must check out that **full commit SHA**. Upgrades
-   go through PR review + full PDF/Markdown/mdBook regression and single
-   Pages deployment. Do not track the converter's moving `main` in production.
+Unit tests cover balanced parsing, heading binding, native heading attributes,
+standalone targets, Script/Example numbering, keyword/citation targets, broken
+references, duplicates, missing files, path confinement, accents and the HTML
+auditor's fail-closed behavior.
 
-The local sandbox used to prepare the initial package had Python, Pandoc,
-Node.js and the original manual, but did **not** contain an mdBook executable
-or network package installer. Hence no local claim is made that a real mdBook
-HTML build or browser rendering has already passed; the Actions job checks
-that separately when the repository is available online.
+## Mandatory real mdBook 0.4.52 gates
+
+The GitHub Actions workflow has two independent renderer checks after Python
+unit tests:
+
+1. **`mdbook-fixture`** converts `tests/fixtures/mdbook-manual`, confirms
+   `mdbook v0.4.52`, renders the two-chapter fixture, and runs
+   `latex2md-audit-html` against the real generated HTML. The fixture exercises
+   native chapter/section/subsection IDs, a cross-page reference, keyword,
+   standalone target, Script, Example and bibliography citation.
+2. **`manual-smoke`** checks out the public `diabat-manual` current `main`, runs
+   the reviewed content baseline, renders the entire generated book with the
+   same mdBook 0.4.52, and runs the same final HTML target/link/resource audit.
+   The complete rendered preview is uploaded as an artifact for visual review.
+
+A new tag must **not** be created unless both jobs pass. The final browser review
+must additionally inspect navigation, search, MathJax, code highlighting,
+Script/Example captions, keyword jumps, bibliography and example downloads.
+
+## Manual-repository production gate
+
+When a converter release is later integrated into `diabat-manual`, the Manual
+repository must pin its **full reviewed converter commit SHA**, compile/validate
+PDF first, build Markdown and mdBook second, then run the rendered HTML auditor
+on the final staged site **without** exempting `diabat.pdf`. Pages deployment is
+allowed only after all stages succeed, so a failed conversion/audit leaves the
+previous successful website live.

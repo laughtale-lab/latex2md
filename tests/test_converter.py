@@ -65,22 +65,95 @@ class ConversionTests(unittest.TestCase):
             self.assertEqual(report['statistics']['original_input_files'],2)
             content=(output/'src/first.md').read_text()
             self.assertIn('href',content) if False else None
+            self.assertIn('# 1 First { #chap-one }',content)
+            self.assertIn('## 1.1 Usage { #sec-usage }',content)
+            self.assertNotIn('<a id="chap-one"',content)
+            self.assertNotIn('<a id="sec-usage"',content)
             self.assertIn('[alpha](#key-alpha)',content)
             self.assertIn('[Script 1-1](#script-one)',content)
             self.assertIn('[Example 1-1](#example-one)',content)
-            self.assertIn('id="key-alpha"',content)
+            self.assertIn('class="target-anchor keyword-target" id="key-alpha"',content)
             self.assertIn('id="script-one"',content)
             self.assertIn('id="example-one"',content)
             self.assertIn('\\\\(x+y\\\\)',content)
             self.assertIn('1. First',content)
             self.assertIn('2. Second',content)
             self.assertNotIn('1. \n',content)
-            self.assertIn('mathjax-support = true',(output/'book.toml').read_text())
-            self.assertIn('diabat.css',(output/'book.toml').read_text())
+            book_config=(output/'book.toml').read_text()
+            self.assertIn('mathjax-support = true',book_config)
+            self.assertIn('diabat.css',book_config)
+            self.assertIn('[output.html.print]\nenable = false',book_config)
             self.assertEqual((source/'examples/release/test.inp').read_bytes(),
                              (output/'src/downloads/examples/release/test.inp').read_bytes())
-            self.assertIn('cite-paper',(output/'src/references.md').read_text())
-            self.assertEqual(json.loads((output/'conversion-report.json').read_text())['citations'],['paper'])
+            references=(output/'src/references.md').read_text()
+            self.assertIn('class="target-anchor citation-target" id="cite-paper"',references)
+            report_json=json.loads((output/'conversion-report.json').read_text())
+            self.assertEqual(report_json['citations'],['paper'])
+            self.assertEqual(report_json['targets']['chap-one']['render'],'heading')
+            self.assertEqual(report_json['targets']['chap-one']['kind'],'chapter')
+            self.assertEqual(report_json['targets']['sec-usage']['render'],'heading')
+            self.assertEqual(report_json['targets']['script-one']['kind'],'script')
+            self.assertEqual(report_json['targets']['cite-paper']['page'],'references.md')
+
+    def test_fenced_listing_inside_ordered_list_uses_marker_width_indent(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            chapter=CHAPTER + r"""
+\begin{enumerate}
+\item One
+\item Two
+\item Three
+\item Four
+\item Five
+\item Six
+\item Seven
+\item Integer sequence example:
+\begin{lst-script}
+state_index = 1, 3..5, 8:12:2, 20
+\end{lst-script}
+selects the requested states.
+\item Nine
+\item Ten with another listing:
+\begin{lst-script}
+mode = 10
+\end{lst-script}
+\end{enumerate}
+\subsection{After Nested Listing}\label{subsec-after-nested-listing}
+The heading after the list must remain outside every code fence.
+"""
+            manual(root/'s',chapter=chapter)
+            convert(root/'s',root/'out')
+            text=(root/'out/src/first.md').read_text(encoding='utf8')
+            self.assertIn('8. Integer sequence example:\n   \n   ```diabat\n'
+                          '   state_index = 1, 3..5, 8:12:2, 20\n'
+                          '   ```\n   \n   selects the requested states.', text)
+            self.assertIn('10. Ten with another listing:\n    \n    ```diabat\n'
+                          '    mode = 10\n    ```', text)
+            self.assertIn('### 1.1.1 After Nested Listing { #subsec-after-nested-listing }', text)
+            self.assertNotIn('\n  state_index = 1, 3..5, 8:12:2, 20\n', text)
+
+    def test_non_heading_label_remains_explicit_target(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            chapter=CHAPTER + r'Plain text before a standalone target.\phantomsection\label{standalone-target}'
+            manual(root/'s',chapter=chapter)
+            report=convert(root/'s',root/'out')
+            content=(root/'out/src/first.md').read_text(encoding='utf8')
+            self.assertIn('class="target-anchor standalone-target" id="standalone-target"',content)
+            self.assertEqual(report['targets']['standalone-target']['render'],'raw-html')
+            self.assertEqual(report['targets']['standalone-target']['kind'],'standalone')
+
+    def test_heading_binding_stops_after_nonblank_content(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            chapter=CHAPTER.replace(r'\section{Usage} \label{sec-usage}',
+                                    r'\section{Usage} prose first \label{sec-usage}')
+            manual(root/'s',chapter=chapter)
+            report=convert(root/'s',root/'out')
+            content=(root/'out/src/first.md').read_text(encoding='utf8')
+            self.assertNotIn('Usage { #sec-usage }',content)
+            self.assertIn('id="sec-usage"',content)
+            self.assertEqual(report['targets']['sec-usage']['render'],'raw-html')
 
     def test_unknown_active_macro_aborts_without_output(self):
         with tempfile.TemporaryDirectory() as d:

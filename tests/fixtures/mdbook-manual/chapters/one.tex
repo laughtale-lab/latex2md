@@ -1,0 +1,39 @@
+\chapter{First Fixture Chapter}\label{chap-fixture-one}
+\section{Alpha Section}\label{sec-fixture-alpha}
+The second chapter is Section~\ref{sec-fixture-beta}.
+The detailed input option is \keyref{key-fixture-alpha}{alpha}.
+The other page contains \example{chap-fixture-two}{example-fixture}.
+
+\keyword
+{key-fixture-alpha}{alpha}{Fixture keyword used to validate a stable HTML target.}
+{\OpOptional}{\OpString}{None}{Any string}{Use a short value.}{alpha = "fixture"}
+
+\begin{lst-script}[escapechar=@]
+@\scriptnum{script-fixture}@
+$diabat-fphd
+  alpha = "fixture" # fixture comment
+$
+\end{lst-script}
+
+This target is intentionally not attached to a heading.\phantomsection\label{standalone-fixture}
+
+
+\begin{enumerate}
+\item One
+\item Two
+\item Three
+\item Four
+\item Five
+\item Six
+\item Seven
+\item Integer sequence example followed by a fenced listing:
+\begin{lst-script}
+state_index = 1, 3..5, 8:12:2, 20
+\end{lst-script}
+This sentence must remain part of item eight after the fenced listing.
+\item Nine
+\end{enumerate}
+
+\subsection{After Nested Listing}\label{subsec-fixture-after-list}
+This heading is intentionally placed after an ordered-list item that contains a
+fenced code block. The rendered HTML audit must still see this heading target.

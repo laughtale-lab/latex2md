@@ -34,13 +34,24 @@ job in the Manual's workflow *after* PDF validation, before staging Pages:
 - name: Build HTML with no silent fallback
   run: mdbook build "$RUNNER_TEMP/diabat-book"
 
-- name: Stage PDF and verified HTML together
+- name: Audit standalone rendered HTML targets before staging
+  run: |
+    # The PDF is co-deployed by the Manual repository in the next step.
+    latex2md-audit-html \
+      --report "$RUNNER_TEMP/diabat-book/conversion-report.json" \
+      --html "$RUNNER_TEMP/diabat-book/book" \
+      --allow-missing diabat.pdf
+
+- name: Stage PDF and verified HTML together, then audit the final site
   env:
     SITE_SOURCE: ${{ runner.temp }}/diabat-book/book
     SITE_MODE: mdbook
   run: |
     bash tools/stage-pages.sh
     python3 tools/validate-site.py site main.pdf
+    latex2md-audit-html \
+      --report "$RUNNER_TEMP/diabat-book/conversion-report.json" \
+      --html site
 ```
 
 The existing `tools/stage-pages.sh` copies `main.pdf` as `site/diabat.pdf`
